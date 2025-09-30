@@ -57,7 +57,7 @@ class Sintatico:
     # Function -> Type ident ( ArgList ) CompoundStmt
     def Function (self):
         self.Type()
-        self.consome(Token.identificador)
+        self.consome(Token.funcao)
         self.consome(Token.abre_parentese)
         self.ArgList()
         self.consome(Token.fecha_parentese)

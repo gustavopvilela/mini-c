@@ -44,6 +44,7 @@ class Token (IntEnum):
     divisao = 33
     modulo = 34
     atribuicao = 35
+    funcao = 36
     
     @classmethod
     def msg (cls, token):

@@ -121,6 +121,12 @@ class Lexico:
             elif estado == Estado.IDENTIFICADOR:
                 if simbolo.isalnum() or simbolo == '_':
                     lexema += simbolo
+                elif simbolo == '(':
+                    self.unget_char()
+                    if Token.reservadas(lexema) == Token.identificador:
+                        return Token.funcao, lexema, self.linha, self.coluna
+                    else:
+                        return Token.reservadas(lexema), lexema, self.linha, self.coluna
                 else:
                     self.unget_char()
                     return Token.reservadas(lexema), lexema, self.linha, self.coluna

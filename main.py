@@ -4,10 +4,10 @@ from ttoken import Token
 
 if __name__ == '__main__':
     try:
-        with open("testes/teste_com_erros.txt", 'r', encoding='utf-8') as arquivo:
+        with open("testes/teste.txt", 'r', encoding='utf-8') as arquivo:
             lexico = Lexico(arquivo)
             sintatico = Sintatico(lexico)
-            sintatico.traduz()
+            sintatico.testa_lexico()
 
     except FileNotFoundError:
         print(f"Erro: O arquivo '{arquivo}' não foi encontrado.")

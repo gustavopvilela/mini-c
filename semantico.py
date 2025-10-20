@@ -2,6 +2,8 @@
 # tabsimb['a']: [Token.int, false]
 # se tivermos int vet[10], temos tabsimb['vet'] = [Token.int, true, 10]
 
+# Cada escopo possui uma tabela de simbolos
+
 # Para funções:
 """
 char letra (int x, float y, int z[15])

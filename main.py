@@ -1,10 +1,11 @@
 from lexico import Lexico
+from semantico import Semantico
 from sintatico import Sintatico
 from ttoken import Token
 
 if __name__ == '__main__':
     try:
-        with open("testes/teste.txt", 'r', encoding='utf-8') as arquivo:
+        with open("testes/teste_com_erros.txt", 'r', encoding='utf-8') as arquivo:
             lexico = Lexico(arquivo)
             sintatico = Sintatico(lexico)
             sintatico.testa_lexico()

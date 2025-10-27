@@ -9,6 +9,11 @@ int main(){
     char s;
     s = "hello";
 
+    // --- CORREÇÕES ---
+    int i; // Declaração de 'i'
+    int array[10]; // Declaração de 'array' (ex: um vetor de 10 inteiros)
+    // ------------------
+
     if (x >= 10 && y < 4) {
         x = x + 1;
     } else {

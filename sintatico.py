@@ -15,8 +15,8 @@ class Sintatico:
             self.Program()
             self.consome(Token.eof)
             print("Traduzido com sucesso!")
-        except:
-            print("Ocorreu um erro durante a tradução.")
+        except Exception as e:
+            print(f"Ocorreu um erro durante a tradução. {e}")
 
     def consome(self, token_atual):
         (token, lexema, linha, coluna) = self.token_lido
@@ -419,17 +419,27 @@ class Sintatico:
     def Rel (self):
         return self.RestoRel(self.Soma())
 
-    # TODO: Corrigir a lógica aqui
     # RestoRel -> opRel Soma | LAMBDA
     def RestoRel (self, caracteristicas_esquerdo):
-        if self.token_lido[0] == Token.operador_relacional:
-            self.consome(Token.operador_relacional)
-            self.Soma()
-        elif self.token_lido[0] in [Token.and_token, Token.or_token, Token.atribuicao, Token.virgula, Token.fecha_colchete, Token.fecha_parentese, Token.ponto_virgula]:
-            pass
-        else:
-            print(f"Erro Sintático: Operador relacional mal formado na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
-            raise Exception
+        tipo_esquerdo, codigo_esquerdo, categoria_esquerdo = caracteristicas_esquerdo
+        operador = self.token_lido[0]
+
+        if operador == Token.operador_relacional:
+            token = self.token_lido
+            lexema_operador = token[1]
+
+            self.consome(operador)
+
+            tipo_direito, codigo_direito, _ = self.Soma()
+
+            # Validando semanticamente
+            tipo_resultado = self.semantico.validar_operacao_binaria(tipo_esquerdo, operador, tipo_direito, token)
+
+            novo_codigo = f"({codigo_esquerdo} {lexema_operador} {codigo_direito})"
+
+            return tipo_resultado, novo_codigo, 'expressao'
+
+        return tipo_esquerdo, codigo_esquerdo, categoria_esquerdo
 
     # Soma -> Mult RestoSoma
     def Soma (self):

@@ -8,7 +8,7 @@ if __name__ == '__main__':
         with open("testes/teste_com_erros.txt", 'r', encoding='utf-8') as arquivo:
             lexico = Lexico(arquivo)
             sintatico = Sintatico(lexico)
-            sintatico.testa_lexico()
+            sintatico.traduz()
 
     except FileNotFoundError:
         print(f"Erro: O arquivo '{arquivo}' não foi encontrado.")

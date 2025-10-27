@@ -18,62 +18,120 @@ tabsimb['letra'] = [
 ]
 """
 
+from tabela_simbolos import TabelaSimbolos, checar_atribuicao, checar_operacao_binaria, checar_operacao_unaria
+from simbolo import Simbolo
 from ttoken import Token
 
 class Semantico:
-    def __init__(self, alvo):
-        self.alvo = open(alvo, 'wt')
-        self.escopos = [{}]
+    def __init__(self):
+        self.tabela_simbolos = TabelaSimbolos()
+        self.retorno_funcao_atual = None
+        self.nivel_laco = 0
+        self.declarar_funcoes_padrao()
 
-    def finaliza (self):
-        self.alvo.close()
+    def declarar_funcoes_padrao (self):
+        putint = Simbolo(nome='putint', categoria='funcao', tipo=Token.int_token)
+        putint.params.append({'tipo': Token.int_token, 'array': False})
+        self.tabela_simbolos.adicionar_simbolo(putint)
 
-    # Adiciona um novo escopo à pilha
-    def entra_escopo (self):
-        self.escopos.append({})
+        getint = Simbolo(nome='getint', categoria='funcao', tipo=Token.int_token)
+        self.tabela_simbolos.adicionar_simbolo(getint)
 
-    # Remove o último escopo da pilha
-    def sai_escopo (self):
-        self.escopos.pop()
+        putfloat = Simbolo(nome='putfloat', categoria='funcao', tipo=Token.int_token)
+        putint.params.append({'tipo': Token.float_token, 'array': False})
+        self.tabela_simbolos.adicionar_simbolo(putfloat)
 
-    # Adiciona uma nova declaração no escopo
-    def declara (self, nome, tipo):
-        escopo_atual = self.escopos[-1]
-        if nome in escopo_atual:
-            print(f'Erro semântico: redeclaração de \"{nome}\" no escopo \"{escopo_atual}\"')
-            raise Exception
-        escopo_atual[nome] = tipo
+        getfloat = Simbolo(nome='getfloat', categoria='funcao', tipo=Token.float_token)
+        self.tabela_simbolos.adicionar_simbolo(getfloat)
 
-    # Verifica se um nome foi declarado em algum escopo válido
-    def verifica_declaracao (self, nome):
-        for escopo in reversed(self.escopos):
-            if nome in escopo:
-                return escopo[nome]
-        print(f'Erro semântico: \"{nome}\" no escopo \"{escopo}\" não foi declarado')
-        raise Exception
+        putchar = Simbolo(nome='putchar', categoria='funcao', tipo=Token.int_token)
+        putchar.params.append({'tipo': Token.char_token, 'array': False})
+        self.tabela_simbolos.adicionar_simbolo(putchar)
 
-    def verifica_tipo (self, tipo_esperado, tipo_real):
-        if tipo_esperado != tipo_real:
-            print(f'Erro semântico: tipo incompatível; esperava {tipo_esperado} e recebeu {tipo_real}')
-            raise Exception
+        getchar = Simbolo(nome='getchar', categoria='funcao', tipo=Token.char_token)
+        self.tabela_simbolos.adicionar_simbolo(getchar)
 
-    def obter_tipo_token (self, identificador, linha, coluna):
-        try:
-            for escopo in self.escopos:
-                if identificador in escopo:
-                    return escopo[identificador]
-            print(f'Variável \"{identificador}\" não declarada. Linha {linha}, coluna {coluna}')
-            raise Exception
-        except Exception as e:
-            print(f'Erro inesperado: {e}')
-            exit(1)
+    def entrar_escopo (self):
+        self.tabela_simbolos.entra_escopo()
 
-    def erro_semantico (self, token_atual, msg):
-        (token, lexema, linha, coluna) = token_atual
-        print(f'Erro na linha {linha}, coluna {coluna}: {msg}')
-        raise Exception
+    def sair_escopo (self):
+        self.tabela_simbolos.sai_escopo()
 
-    def gera (self, nivel, codigo):
-        identacao = ' ' * 4 * nivel
-        linha = identacao + codigo
-        self.alvo.write(linha)
+    def declarar_funcao (self, nome, retorno, token):
+        simbolo = Simbolo(nome=nome, categoria='funcao', tipo=retorno)
+        sucesso, erro = self.tabela_simbolos.adicionar_simbolo(simbolo)
+        if not sucesso:
+            raise Exception(f'Erro semântico ao declarar função na linha {token[2]}: {erro}')
+
+        self.retorno_funcao_atual = retorno
+        return simbolo
+
+    def declarar_argumento (self, nome, tipo, array, lista_parametros, token):
+        lista_parametros.append({'tipo': tipo, 'array': array})
+        simbolo = Simbolo(nome=nome, categoria='variavel', tipo=tipo, array=array)
+        sucesso, erro = self.tabela_simbolos.adicionar_simbolo(simbolo)
+        if not sucesso:
+            raise Exception(f'Erro semântico ao declarar argumento na linha {token[2]}: {erro}')
+
+    def declarar_variavel (self, nome, tipo, array, token):
+        simbolo = Simbolo(nome=nome, categoria='variavel', tipo=tipo, array=array)
+        sucesso, erro = self.tabela_simbolos.adicionar_simbolo(simbolo)
+        if not sucesso:
+            raise Exception(f'Erro semântico ao declarar variável na linha {token[2]}: {erro}')
+
+    def verificar_identificador_declarado (self, nome, token):
+        simbolo = self.tabela_simbolos.procurar_simbolo(nome)
+        if simbolo is None:
+            raise Exception(f'Erro semântico ao verificar identificador na linha {token[2]}: Identificador {nome} não declarado.')
+        return simbolo
+
+    def verificar_retorno (self, tipo, token):
+        if self.retorno_funcao_atual is None:
+            raise Exception(f'Erro semântico na linha {token[2]}: comando \'return\' encontrado fora de uma função')
+
+        tipo_esperado = (self.retorno_funcao_atual.tipo, False)
+        if not checar_atribuicao(tipo_esperado, tipo):
+            raise Exception(f'Erro semântico na linha {token[2]}: tipo de retorno incompatível. Esperava \'{Token.msg(self.retorno_funcao_atual)}\' mas recebey {tipo}.')
+
+    def entrar_laco (self):
+        self.nivel_laco += 1
+
+    def sair_laco (self):
+        self.nivel_laco -= 1
+
+    """ Verifica se os comandos break ou continue estão dentro de um laço. """
+    def verificar_parada_laco (self, token):
+        if self.nivel_laco == 0:
+            comando = Token.msg(token[0])
+            raise Exception(f'Erro semântico na linha {token[2]}: Comando {comando} só pode ser usado dentro de um laço.')
+
+    def validar_chamada_funcao (self, funcao: Simbolo, args, token):
+        parametros_esperados = funcao.params
+
+        # Verificando se o número de argumentos corresponde
+        if len(args) != len(parametros_esperados):
+            raise Exception(f'Erro semântico na linha {token[2]}: número incorreto de parâmetros para a função {funcao.nome}. Esperava {len(parametros_esperados)} mas recebeu {len(args)}.')
+
+        # Verifica o tipo de cada argumento
+        for i, tipo_argumento_passado in enumerate(args):
+            parametro_esperado = parametros_esperados[i]
+            tipo_esperado = (parametro_esperado['tipo'], parametro_esperado['array'])
+
+            if not checar_atribuicao(tipo_esperado, tipo_argumento_passado):
+                raise Exception(f'Erro semântico na linha {token[2]}: tipo incorreto para o {i + 1}º argumento da função {funcao.nome}. Esperava {tipo_esperado}, mas recebeu {tipo_argumento_passado}.')
+
+    def validar_operacao_binaria (self, tipo_operador_esquerdo, operacao, tipo_operador_direito, token):
+        tipo_resultado = checar_operacao_binaria(tipo_operador_esquerdo, operacao, tipo_operador_direito)
+        if tipo_resultado is None:
+            raise Exception(f'Erro semântico na linha {token[2]}: operação {Token.msg(operacao)} inválida para os tipos {tipo_operador_esquerdo} e {tipo_operador_direito}.')
+        return tipo_resultado
+
+    def validar_operacao_unaria (self, operacao, tipo_operando, token):
+        tipo_resultado = checar_operacao_unaria(operacao, tipo_operando)
+        if tipo_resultado is None:
+            raise Exception(f'Erro semântico na linha {token[2]}: operador unário {Token.msg(operacao)} inválido para o tipo {tipo_operando}.')
+        return tipo_resultado
+
+    def validar_atribuicao (self, tipo_variavel, tipo_expressao, token):
+        if not checar_atribuicao(tipo_variavel, tipo_expressao):
+            raise Exception(f'Erro semântico na linha {token[2]}: atribuição incompatível. Impossível atribuir {tipo_expressao} a {tipo_variavel}.')

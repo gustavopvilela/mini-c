@@ -1,10 +1,13 @@
+from simbolo import Simbolo
 from ttoken import Token
 from lexico import Lexico
+from semantico import Semantico
 
 class Sintatico:
     def __init__(self, lexico: Lexico):
         self.lexico = lexico
         self.token_lido = None
+        self.semantico = Semantico()
 
     def traduz(self):
         self.token_lido = self.lexico.get_token()
@@ -56,18 +59,35 @@ class Sintatico:
 
     # Function -> Type ident ( ArgList ) CompoundStmt
     def Function (self):
-        self.Type()
+        # Capturando o tipo de retorno
+        tipo_retorno = self.Type()
+        nome_funcao = self.token_lido[1]
+        token_funcao = self.token_lido
+
         self.consome(Token.funcao)
+
+        # Declarando a função no semântico
+        simbolo_funcao = self.semantico.declarar_funcao(nome=nome_funcao, retorno=tipo_retorno, token=token_funcao)
+
         self.consome(Token.abre_parentese)
-        self.ArgList()
+
+        # Entrando em um novo escopo
+        self.semantico.entrar_escopo()
+
+        # Passando a lista de parâmetros da função para a função ArgList
+        self.ArgList(simbolo_funcao.params)
+
         self.consome(Token.fecha_parentese)
         self.CompoundStmt()
 
+        # Sai do escopo
+        self.semantico.sair_escopo()
+
     # ArgList -> Arg RestoArgList | LAMBDA
-    def ArgList (self):
+    def ArgList (self, lista_parametros):
         if self.token_lido[0] in [Token.int_token, Token.float_token, Token.char_token]:
-            self.Arg()
-            self.RestoArgList()
+            self.Arg(lista_parametros)
+            self.RestoArgList(lista_parametros)
         elif self.token_lido[0] == Token.fecha_parentese:
             pass
         else:
@@ -75,11 +95,11 @@ class Sintatico:
             raise Exception
 
     # RestoArgList -> , Arg RestoArgList | LAMBDA
-    def RestoArgList (self):
+    def RestoArgList (self, lista_parametros):
         if self.token_lido[0] == Token.virgula:
             self.consome(Token.virgula)
-            self.Arg()
-            self.RestoArgList()
+            self.Arg(lista_parametros)
+            self.RestoArgList(lista_parametros)
         elif self.token_lido[0] == Token.fecha_parentese:
             pass
         else:
@@ -87,22 +107,28 @@ class Sintatico:
             raise Exception
 
     # Arg -> Type IdentArg
-    def Arg (self):
-        self.Type()
-        self.IdentArg()
+    def Arg (self, lista_parametros):
+        tipo_argumento = self.Type()
+        nome_argumento, array = self.IdentArg()
+
+        # Declarando o argumento da função
+        self.semantico.declarar_argumento(nome=nome_argumento, tipo=tipo_argumento, array=array, lista_parametros=lista_parametros, token=self.token_lido)
 
     # IdentArg -> ident OpcIdentArg
     def IdentArg (self):
+        nome_argumento = self.token_lido[1]
         self.consome(Token.identificador)
-        self.OpcIdentArg()
+        array = self.OpcIdentArg() # Verifica se o argumento é um vetor ou não
+        return nome_argumento, array
 
     # OpcIdentArg -> [ ] | LAMBDA
     def OpcIdentArg (self):
         if self.token_lido[0] == Token.abre_colchete:
             self.consome(Token.abre_colchete)
             self.consome(Token.fecha_colchete)
+            return True # O argumento é um vetor
         elif self.token_lido[0] in [Token.virgula, Token.fecha_parentese]:
-            pass
+            return False # O argumento não é um vetor
         else:
             print(f"Erro Sintático: Argumento de array mal formado na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
@@ -110,11 +136,19 @@ class Sintatico:
     # CompoundStmt -> { StmtList }
     def CompoundStmt(self):
         self.consome(Token.abre_chave)
+
+        # Entrando em um novo escopo
+        self.semantico.entrar_escopo()
+
         self.StmtList()
         self.consome(Token.fecha_chave)
 
+        # Saindo do escopo
+        self.semantico.sair_escopo()
+
     # StmtList -> Stmt StmtList | LAMBDA
     def StmtList(self):
+        # Conjunto First para a variável StmtList
         comandos_possiveis = [
             Token.for_token, Token.while_token, Token.if_token, Token.abre_chave,
             Token.break_token, Token.continue_token, Token.return_token, Token.ponto_virgula,
@@ -133,29 +167,63 @@ class Sintatico:
             raise Exception
 
     def Stmt (self):
-        tipo_token = self.token_lido[0]
+        # Conjunto First da variável Stmt
+        comandos_possiveis = {
+            Token.identificador, Token.valor_int, Token.valor_float,
+            Token.valor_char, Token.valor_string, Token.abre_parentese,
+            Token.mais, Token.menos, Token.not_token
+        }
 
-        if tipo_token == Token.for_token: self.ForStmt()
-        elif tipo_token == Token.while_token: self.WhileStmt()
-        elif tipo_token == Token.if_token: self.IfStmt()
-        elif tipo_token == Token.abre_chave: self.CompoundStmt()
+        token = self.token_lido
+        tipo_token = token[0]
+
+        if tipo_token == Token.for_token:
+            self.semantico.entrar_laco()
+            self.ForStmt()
+            self.semantico.sair_laco()
+
+        elif tipo_token == Token.while_token:
+            self.semantico.entrar_laco()
+            self.WhileStmt()
+            self.semantico.sair_laco()
+
+        elif tipo_token == Token.if_token:
+            self.IfStmt()
+
+        elif tipo_token == Token.abre_chave:
+            self.CompoundStmt()
+
+        elif tipo_token in {Token.int_token, Token.float_token, Token.char_token}:
+            self.Declaration()
+
         elif tipo_token == Token.break_token:
+            self.semantico.verificar_parada_laco(token)
             self.consome(Token.break_token)
             self.consome(Token.ponto_virgula)
+
         elif tipo_token == Token.continue_token:
+            self.semantico.verificar_parada_laco(token)
             self.consome(Token.continue_token)
             self.consome(Token.ponto_virgula)
+
         elif tipo_token == Token.return_token:
             self.consome(Token.return_token)
-            self.Expr()
+
+            # Pegando o retorno da expressão
+            tipo_expressao, _, _ = self.Expr()
+
+            # Verificando o tipo de retorno
+            self.semantico.verificar_retorno(tipo_expressao, token)
+
             self.consome(Token.ponto_virgula)
-        elif tipo_token in [Token.int_token, Token.float_token, Token.char_token]:
-            self.Declaration()
+
+        elif tipo_token in comandos_possiveis:
+            self.Expr() # Não precisamos do retorno desta função aqui
+            self.consome(Token.ponto_virgula)
+
         elif tipo_token == Token.ponto_virgula:
-            self.consome(Token.ponto_virgula)
-        elif tipo_token in [Token.identificador, Token.valor_int, Token.valor_float, Token.valor_char, Token.valor_string, Token.abre_parentese, Token.mais, Token.menos, Token.not_token]:
-            self.Expr()
-            self.consome(Token.ponto_virgula)
+            self.consome(Token.ponto_virgula) # Comando vazio
+
         else:
             print(f"Erro Sintático: Comando inválido '{self.token_lido[1]}' na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
@@ -174,7 +242,14 @@ class Sintatico:
 
     # OptExpr -> Expr | LAMBDA
     def OptExpr (self):
-        if self.token_lido[0] in [Token.identificador, Token.valor_int, Token.valor_float, Token.valor_char, Token.valor_string, Token.abre_parentese, Token.mais, Token.menos, Token.not_token]:
+        # Conjunto First da variável OptExpr
+        comandos_possiveis = {
+            Token.not_token, Token.mais, Token.menos, Token.abre_parentese,
+            Token.valor_int, Token.valor_float, Token.valor_char,
+            Token.valor_string, Token.identificador
+        }
+
+        if self.token_lido[0] in comandos_possiveis:
             self.Expr()
         elif self.token_lido[0] in [Token.ponto_virgula, Token.fecha_parentese]:
             pass
@@ -204,7 +279,14 @@ class Sintatico:
         if self.token_lido[0] == Token.else_token:
             self.consome(Token.else_token)
             self.Stmt()
-        elif self.token_lido[0] in [Token.for_token, Token.while_token, Token.if_token, Token.abre_chave, Token.break_token, Token.continue_token, Token.return_token, Token.ponto_virgula, Token.int_token, Token.float_token, Token.char_token, Token.identificador, Token.valor_int, Token.valor_float, Token.valor_char, Token.valor_string, Token.abre_parentese, Token.mais, Token.menos, Token.not_token, Token.fecha_chave, Token.eof]:
+        elif self.token_lido[0] in [
+            Token.for_token, Token.while_token, Token.if_token, Token.abre_chave,
+            Token.break_token, Token.continue_token, Token.return_token,
+            Token.ponto_virgula, Token.int_token, Token.float_token, Token.char_token,
+            Token.identificador, Token.valor_int, Token.valor_float, Token.valor_char,
+            Token.valor_string, Token.abre_parentese, Token.mais, Token.menos,
+            Token.not_token, Token.fecha_chave, Token.eof
+        ]:
             pass
         else:
             print(f"Erro Sintático: Cláusula 'else' mal formada na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
@@ -212,30 +294,31 @@ class Sintatico:
 
     # Declaration -> Type IdentList ;
     def Declaration (self):
-        self.Type()
-        self.IdentList()
+        tipo_variavel = self.Type() # Pegando o tipo da variável atual
+        self.IdentList(tipo_variavel) # Passando o tipo da lista de variveis
         self.consome(Token.ponto_virgula)
 
     # Type -> int | float | char
     def Type (self):
-        if self.token_lido[0] == Token.int_token: self.consome(Token.int_token)
-        elif self.token_lido[0] == Token.float_token: self.consome(Token.float_token)
-        elif self.token_lido[0] == Token.char_token: self.consome(Token.char_token)
+        token = self.token_lido[0]
+        if token in {Token.int_token, Token.float_token, Token.char_token}:
+            self.consome(token)
+            return token # Retorna o tipo da variável/função
         else:
             print(f"Erro Sintático: Tipo de dado esperado (int, float, char) na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
     # IdentList -> IdentDeclar RestoIdentList
-    def IdentList (self):
-        self.IdentDeclar()
-        self.RestoIdentList()
+    def IdentList (self, tipo_variavel):
+        self.IdentDeclar(tipo_variavel)
+        self.RestoIdentList(tipo_variavel)
 
     # RestoIdentList -> , IdentDeclar RestoIdentList | LAMBDA
-    def RestoIdentList (self):
+    def RestoIdentList (self, tipo_variavel):
         if self.token_lido[0] == Token.virgula:
             self.consome(Token.virgula)
-            self.IdentDeclar()
-            self.RestoIdentList()
+            self.IdentDeclar(tipo_variavel)
+            self.RestoIdentList(tipo_variavel)
         elif self.token_lido[0] == Token.ponto_virgula:
             pass
         else:
@@ -243,75 +326,102 @@ class Sintatico:
             raise Exception
 
     # IdentDeclar -> ident OpcIdentDeclar
-    def IdentDeclar (self):
+    def IdentDeclar (self, tipo_variavel):
+        nome_variavel = self.token_lido[1]
+        token = self.token_lido
         self.consome(Token.identificador)
-        self.OpcIdentDeclar()
+        array, tamanho = self.OpcIdentDeclar() # Pegando se a variável é array e seu tamanho
+
+        self.semantico.declarar_variavel(nome=nome_variavel, tipo=tipo_variavel, array=array, token=token)
 
     # OpcIdentDeclar -> [ valorInt ] | LAMBDA
     def OpcIdentDeclar (self):
         if self.token_lido[0] == Token.abre_colchete:
             self.consome(Token.abre_colchete)
+            tamanho = self.token_lido[1] # Pegando o tamanho do array
             self.consome(Token.valor_int)
             self.consome(Token.fecha_colchete)
+            return True, tamanho # É um array
         elif self.token_lido[0] in [Token.virgula, Token.ponto_virgula]:
-            pass
+            return False, None # Não é um array
         else:
             print(f"Erro Sintático: Declaração de array mal formada na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
     # Expr -> Log RestoExpr
     def Expr (self):
-        self.Log()
-        self.RestoExpr()
+        return self.RestoExpr(self.Log()) # Retorna tipo, código e categoria
 
     # RestoExpr -> = Expr RestoExpr | LAMBDA
-    def RestoExpr (self):
+    def RestoExpr (self, caracteristicas_esquerdo):
+        tipo_esquerdo, codigo_esquerdo, categoria_esquerdo = caracteristicas_esquerdo
+
         if self.token_lido[0] == Token.atribuicao:
+            # Verifica se a categoria do lado esquerdo é possível
+            if categoria_esquerdo not in {'identificador', 'acesso_vetor'}:
+                raise Exception(f'Erro semântico na linha {self.token_lido[2]}: o lado esquerdo da atribuição deve ser variável ou acesso a vetor.')
+
+            token = self.token_lido
             self.consome(Token.atribuicao)
-            self.Expr()
-            self.RestoExpr()
-        elif self.token_lido[0] in [Token.virgula, Token.fecha_colchete, Token.fecha_parentese, Token.ponto_virgula]:
-            pass
-        else:
-            print(f"Erro Sintático: Atribuição mal formada na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
-            raise Exception
+
+            # Obtendo os dados do lado direito da atribuição (permite a = b = c)
+            tipo_direito, codigo_direito, _ = self.Expr()
+
+            # Validando a atribuição
+            self.semantico.validar_atribuicao(tipo_esquerdo, tipo_direito, token)
+
+            novo_codigo = f"{codigo_esquerdo} = {codigo_direito}"
+
+            # Continua a verificar recursivamente
+            return self.RestoExpr((tipo_esquerdo, novo_codigo, 'expressao'))
+
+        # Se não for atribuição, retornamos a tupla original da esquerda
+        return tipo_esquerdo, codigo_esquerdo, categoria_esquerdo
 
     # Log -> Nao RestoLog
     def Log (self):
-        self.Nao()
-        self.RestoLog()
+        return self.RestoLog(self.Nao())
 
     # RestoLog -> AND Nao RestoLog | OR Nao RestoLog | LAMBDA
-    def RestoLog (self):
-        if self.token_lido[0] == Token.and_token:
-            self.consome(Token.and_token)
-            self.Nao()
-            self.RestoLog()
-        elif self.token_lido[0] == Token.or_token:
-            self.consome(Token.or_token)
-            self.Nao()
-            self.RestoLog()
-        elif self.token_lido[0] in [Token.atribuicao, Token.virgula, Token.fecha_colchete, Token.fecha_parentese, Token.ponto_virgula]:
-            pass
-        else:
-            print(f"Erro Sintático: Operador lógico (&&, ||) mal formado na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
-            raise Exception
+    def RestoLog (self, caracteristicas_esquerdo):
+        tipo_esquerdo, codigo_esquerdo, categoria_esquerdo = caracteristicas_esquerdo
+        operador = self.token_lido[0]
+
+        if operador in {Token.and_token, Token.or_token}:
+            token = self.token_lido
+            self.consome(operador)
+            tipo_direito, codigo_direito, _ = self.Nao()
+
+            tipo_resultado = self.semantico.validar_operacao_binaria(tipo_esquerdo, operador, tipo_direito, token)
+            novo_codigo = f"{codigo_esquerdo} {Token.msg(operador)} {codigo_direito}"
+
+            return self.RestoLog((tipo_resultado, novo_codigo, 'expressao'))
+
+        return tipo_esquerdo, codigo_esquerdo, categoria_esquerdo
 
     # Nao -> NOT Nao | Rel
     def Nao (self):
-        if self.token_lido[0] == Token.not_token:
-            self.consome(Token.not_token)
-            self.Nao()
+        operador = self.token_lido[0]
+
+        if operador == Token.not_token:
+            token = self.token_lido
+            self.consome(operador)
+            tipo_operando, codigo_operando, _ = self.Nao()
+
+            tipo_resultado = self.semantico.validar_operacao_unaria(operador, tipo_operando, token)
+            novo_codigo = f"!{codigo_operando}"
+
+            return tipo_resultado, novo_codigo, 'expressao'
         else:
-            self.Rel()
+            return self.Rel()
 
     # Rel -> Soma RestoRel
     def Rel (self):
-        self.Soma()
-        self.RestoRel()
+        return self.RestoRel(self.Soma())
 
+    # TODO: Corrigir a lógica aqui
     # RestoRel -> opRel Soma | LAMBDA
-    def RestoRel (self):
+    def RestoRel (self, caracteristicas_esquerdo):
         if self.token_lido[0] == Token.operador_relacional:
             self.consome(Token.operador_relacional)
             self.Soma()
@@ -323,118 +433,193 @@ class Sintatico:
 
     # Soma -> Mult RestoSoma
     def Soma (self):
-        self.Mult()
-        self.RestoSoma()
+        return self.RestoSoma(self.Mult())
 
     # RestoSoma -> + Mult RestoSoma | - Mult RestoSoma | LAMBDA
-    def RestoSoma (self):
-        if self.token_lido[0] == Token.mais:
-            self.consome(Token.mais)
-            self.Mult()
-            self.RestoSoma()
-        elif self.token_lido[0] == Token.menos:
-            self.consome(Token.menos)
-            self.Mult()
-            self.RestoSoma()
-        elif self.token_lido[0] in [Token.operador_relacional, Token.and_token, Token.or_token, Token.atribuicao, Token.virgula, Token.fecha_colchete, Token.fecha_parentese, Token.ponto_virgula]:
-            pass
-        else:
-            print(f"Erro Sintático: Operador de soma/subtração mal formado na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
-            raise Exception
+    def RestoSoma (self, caracteristicas_esquerdo):
+        tipo_esquerdo, codigo_esquerdo, categoria_esquerdo = caracteristicas_esquerdo
+        operador = self.token_lido[0]
+
+        if operador in {Token.mais, Token.menos}:
+            token = self.token_lido
+            self.consome(operador)
+            tipo_direito, codigo_direito, _ = self.Mult()
+
+            # Validando semanticamente
+            tipo_resultado = self.semantico.validar_operacao_binaria(tipo_esquerdo, operador, tipo_direito, token)
+            novo_codigo = f"({codigo_esquerdo} {Token.msg(operador)} {codigo_direito})"
+
+            return self.RestoSoma((tipo_resultado, novo_codigo, 'expressao'))
+
+        return tipo_esquerdo, codigo_esquerdo, categoria_esquerdo
 
     # Mult -> Uno RestoMult
     def Mult (self):
-        self.Uno()
-        self.RestoMult()
+        return self.RestoMult(self.Uno())
 
     # RestoMult -> * Uno RestoMult | / Uno RestoMult | % Uno RestoMult | LAMBDA
-    def RestoMult (self):
-        if self.token_lido[0] == Token.multiplicacao:
-            self.consome(Token.multiplicacao)
-            self.Uno()
-            self.RestoMult()
-        elif self.token_lido[0] == Token.divisao:
-            self.consome(Token.divisao)
-            self.Uno()
-            self.RestoMult()
-        elif self.token_lido[0] == Token.modulo:
-            self.consome(Token.modulo)
-            self.Uno()
-            self.RestoMult()
-        elif self.token_lido[0] in [
-            Token.mais, Token.menos, Token.operador_relacional, Token.and_token,
-            Token.or_token, Token.atribuicao, Token.virgula, Token.fecha_colchete,
-            Token.fecha_parentese, Token.ponto_virgula
-        ]:
-            pass
-        else:
-            print(f"Erro Sintático: Operador de multiplicação/divisão mal formado na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
-            raise Exception
+    def RestoMult (self, caracteristicas_esquerdo):
+        tipo_esquerdo, codigo_esquerdo, categoria_esquerdo = caracteristicas_esquerdo
+        operador = self.token_lido[0]
+
+        op_mult = {Token.multiplicacao, Token.divisao, Token.modulo}
+
+        if operador in op_mult:
+            token = self.token_lido
+            self.consome(operador)
+            tipo_direito, codigo_direito, _ = self.Uno()
+
+            # Validando semanticamente
+            tipo_resultado = self.semantico.validar_operacao_binaria(tipo_esquerdo, operador, tipo_direito, token)
+            novo_codigo = f"({codigo_esquerdo} {Token.msg(operador)} {codigo_direito})"
+
+            return self.RestoMult((tipo_resultado, novo_codigo, 'expressao'))
+
+        return tipo_esquerdo, codigo_esquerdo, categoria_esquerdo
 
     # Uno -> + Uno | - Uno | Folha
     def Uno (self):
-        if self.token_lido[0] == Token.mais:
-            self.consome(Token.mais)
-            self.Uno()
-        elif self.token_lido[0] == Token.menos:
-            self.consome(Token.menos)
-            self.Uno()
+        operador = self.token_lido[0]
+        if operador in {Token.menos, Token.mais}:
+            token = self.token_lido
+            self.consome(operador)
+            tipo_operando, codigo_operando, _ = self.Uno()
+
+            # Validando semanticamente
+            tipo_resultado = self.semantico.validar_operacao_unaria(operador, tipo_operando, token)
+            novo_codigo = f"({Token.msg(operador)}{codigo_operando})"
+
+            return tipo_resultado, novo_codigo, 'expressao'
         else:
-            self.Folha()
+            return self.Folha()
 
     # Folha -> ( Expr ) | Identifier | valorInt | valorFloat | valorChar | valorString
     def Folha (self):
-        if self.token_lido[0] == Token.abre_parentese:
+        token, lexema, linha, _ = self.token_lido
+        token_info = self.token_lido
+
+        if token == Token.abre_parentese:
             self.consome(Token.abre_parentese)
-            self.Expr()
+            tipo, codigo, _ = self.Expr()
             self.consome(Token.fecha_parentese)
-        elif self.token_lido[0] == Token.identificador: self.Identifier()
-        elif self.token_lido[0] == Token.valor_int: self.consome(Token.valor_int)
-        elif self.token_lido[0] == Token.valor_float: self.consome(Token.valor_float)
-        elif self.token_lido[0] == Token.valor_char: self.consome(Token.valor_char)
-        elif self.token_lido[0] == Token.valor_string: self.consome(Token.valor_string)
+            return tipo, f"({codigo})", 'expressao'
+
+        elif token == Token.identificador:
+            simbolo = self.semantico.verificar_identificador_declarado(lexema, token)
+            self.consome(Token.identificador)
+            return self.OpcIdentifier(simbolo)
+
+        elif token == Token.valor_int:
+            self.consome(Token.valor_int)
+            return (Token.int_token, False), lexema, 'literal'
+
+        elif token == Token.valor_float:
+            self.consome(Token.valor_float)
+            return (Token.float_token, False), lexema, 'literal'
+
+        elif token == Token.valor_char:
+            self.consome(Token.valor_char)
+            return (Token.char_token, False), lexema, 'literal'
+
+        elif token == Token.valor_string:
+            self.consome(Token.valor_string)
+            return (Token.char_token, True), lexema, 'literal'
+
         else:
             print(f"Erro Sintático: Expressão esperava um identificador, número ou '(' na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
     # Identifier -> ident OpcIdentifier
-    def Identifier (self):
-        self.consome(Token.identificador)
-        self.OpcIdentifier()
+    # def Identifier (self):
+    #     self.consome(Token.identificador)
+    #     self.OpcIdentifier()
 
     # OpcIdentifier -> [ Expr ] | ( Params ) | LAMBDA
-    def OpcIdentifier (self):
-        if self.token_lido[0] == Token.abre_colchete:
+    def OpcIdentifier (self, simbolo: Simbolo):
+        token_info = self.token_lido
+        token = token_info[0]
+
+        # Opção 1: acesso a vetor
+        if token == Token.abre_colchete:
+            if not simbolo.array:
+                raise Exception(f"Erro semântico nalinha {token_info[2]}: {simbolo.nome} não é vetor e não pode ser indexado.")
+
             self.consome(Token.abre_colchete)
-            self.Expr()
+            tipo_indice, codigo_indice, _ = self.Expr()
+
+            if tipo_indice != (Token.int_token, False):
+                raise Exception(
+                    f"Erro semântico nalinha {token_info[2]}: índice do vetor deve ser inteiro.")
+
             self.consome(Token.fecha_colchete)
-        elif self.token_lido[0] == Token.abre_parentese:
+
+            tipo_elemento = (simbolo.tipo, False)
+            codigo_acesso = f"{simbolo.nome}[{codigo_indice}]"
+            categoria = 'acesso_vetor'
+
+            return tipo_elemento, codigo_acesso, categoria
+
+        # Opção 2: chamada de função
+        elif token == Token.abre_parentese:
+            if simbolo.categoria != 'funcao':
+                raise Exception(
+                    f"Erro semântico nalinha {token_info[2]}: {simbolo.nome} não é função e não pode ser chamado.")
+
             self.consome(Token.abre_parentese)
-            self.Params()
+            tipos_args, codigos_args = self.Params(simbolo)
+
+            self.semantico.validar_chamada_funcao(simbolo, tipos_args, token_info)
             self.consome(Token.fecha_parentese)
-        elif self.token_lido[0] in [Token.multiplicacao, Token.divisao, Token.modulo, Token.mais, Token.menos, Token.operador_relacional, Token.and_token, Token.or_token, Token.atribuicao, Token.virgula, Token.fecha_colchete, Token.fecha_parentese, Token.ponto_virgula]:
-            pass
+
+            tipo_retorno = (simbolo.tipo, False)
+            codigo_chamada = f"{simbolo.nome}({', '.join(codigos_args)})"
+            categoria = 'expressao'
+
+            return tipo_retorno, codigo_chamada, categoria
+
+        # Opção 3: uso de variável
         else:
-            print(f"Erro Sintático: Uso inválido de identificador (esperava-se '(', '[' ou operador) na linha {self.token_lido[2]}, coluna {self.token_lido[3]})")
-            raise Exception
+            tipo_variavel = (simbolo.tipo, simbolo.array)
+            codigo_variavel = simbolo.nome
+            categoria = 'identificador'
+
+            return tipo_variavel, codigo_variavel, categoria
 
     # Params -> Expr RestoParams | LAMBDA
-    def Params (self):
-        if self.token_lido[0] in [Token.identificador, Token.valor_int, Token.valor_float, Token.valor_char, Token.valor_string, Token.abre_parentese, Token.mais, Token.menos, Token.not_token]:
-            self.Expr()
-            self.RestoParams()
+    def Params (self, simbolo):
+        # Conjunto First da variável Params
+        comandos_possiveis = {
+            Token.not_token, Token.mais, Token.menos, Token.abre_parentese,
+            Token.valor_int, Token.valor_float, Token.valor_char,
+            Token.valor_string, Token.identificador
+        }
+
+        tipos_passados = []
+        codigos_passados = []
+
+        if self.token_lido[0] in comandos_possiveis:
+            tipo_arg, codigo_arg, _ = self.Expr()
+            tipos_passados.append(tipo_arg)
+            codigos_passados.append(codigo_arg)
+            self.RestoParams(tipos_passados, codigos_passados)
+
         elif self.token_lido[0] == Token.fecha_parentese:
             pass
+
         else:
             print(f"Erro Sintático: Parâmetros de função inválidos na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
+        return tipos_passados, codigos_passados
+
     # RestoParams -> , Expr RestoParams | LAMBDA
-    def RestoParams (self):
+    def RestoParams (self, tipos_passados, codigos_passados):
         if self.token_lido[0] == Token.virgula:
             self.consome(Token.virgula)
-            self.Expr()
-            self.RestoParams()
+            tipo_arg, codigo_arg, _ = self.Expr()
+            tipos_passados.append(tipo_arg)
+            codigos_passados.append(codigo_arg)
+            self.RestoParams(tipos_passados, codigos_passados)
         elif self.token_lido[0] == Token.fecha_parentese:
             pass
         else:

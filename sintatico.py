@@ -64,7 +64,7 @@ class Sintatico:
         nome_funcao = self.token_lido[1]
         token_funcao = self.token_lido
 
-        self.consome(Token.funcao)
+        self.consome(Token.identificador)
 
         # Declarando a função no semântico
         simbolo_funcao = self.semantico.declarar_funcao(nome=nome_funcao, retorno=tipo_retorno, token=token_funcao)

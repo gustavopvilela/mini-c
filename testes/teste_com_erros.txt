@@ -1,9 +1,12 @@
-int main(){
+int main(int x[]){
 
     // Declarações corretas
     //int x = 10;
     //float y = 3.14;
     //char c = 'A';
+
+    int a;
+    a = 5 + "teste"
 
     // --- Situações intencionalmente erradas para testar o léxico ---
 

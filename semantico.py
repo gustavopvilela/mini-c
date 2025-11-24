@@ -38,7 +38,7 @@ class Semantico:
         self.tabela_simbolos.adicionar_simbolo(getint)
 
         putfloat = Simbolo(nome='putfloat', categoria='funcao', tipo=Token.int_token)
-        putint.params.append({'tipo': Token.float_token, 'array': False})
+        putfloat.params.append({'tipo': Token.float_token, 'array': False})
         self.tabela_simbolos.adicionar_simbolo(putfloat)
 
         getfloat = Simbolo(nome='getfloat', categoria='funcao', tipo=Token.float_token)
@@ -50,6 +50,10 @@ class Semantico:
 
         getchar = Simbolo(nome='getchar', categoria='funcao', tipo=Token.char_token)
         self.tabela_simbolos.adicionar_simbolo(getchar)
+
+        putstr = Simbolo(nome='putstr', categoria='funcao', tipo=Token.int_token)
+        putstr.params.append({'tipo': Token.char_token, 'array': True})
+        self.tabela_simbolos.adicionar_simbolo(putstr)
 
     def entrar_escopo (self):
         self.tabela_simbolos.entra_escopo()

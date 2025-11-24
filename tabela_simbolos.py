@@ -104,8 +104,8 @@ def checar_operacao_unaria (operacao, tipo_elemento):
     return regras_operacoes_unarias.get(chave, None)
 
 def checar_atribuicao (tipo_variavel, tipo_expressao):
-    if tipo_variavel[1]: return False
     if tipo_variavel == tipo_expressao: return True
+    if tipo_variavel[1]: return False
     if tipo_variavel == (Token.float_token, False) and tipo_expressao: return True
     if tipo_variavel == (Token.int_token, False) and tipo_expressao: return True
     if tipo_variavel[0] in {Token.int_token, Token.float_token, Token.char_token} and tipo_expressao[0] in {Token.int_token, Token.float_token, Token.char_token}: return True

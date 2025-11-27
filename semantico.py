@@ -77,7 +77,7 @@ class Semantico:
         return simbolo
 
     def declarar_argumento (self, nome, tipo, array, lista_parametros, token):
-        lista_parametros.append({'tipo': tipo, 'array': array})
+        lista_parametros.append({'nome': nome, 'tipo': tipo, 'array': array})
         simbolo = Simbolo(nome=nome, categoria='variavel', tipo=tipo, array=array)
         sucesso, erro = self.tabela_simbolos.adicionar_simbolo(simbolo)
         if not sucesso:

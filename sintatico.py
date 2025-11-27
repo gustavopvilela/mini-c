@@ -4,14 +4,26 @@ from lexico import Lexico
 from semantico import Semantico
 
 class Sintatico:
-    def __init__(self, lexico: Lexico):
+    def __init__(self, lexico: Lexico, alvo: str = "saida.py"):
         self.lexico = lexico
         self.token_lido = None
-        self.semantico = Semantico()
+        self.semantico = Semantico(alvo)
 
     def traduz(self):
         self.token_lido = self.lexico.get_token()
         try:
+            self.semantico.gera(0, 'def putint(x): print(x, end="")\n')
+            self.semantico.gera(0, 'def putfloat(x): print(float(x), end="")\n')
+            self.semantico.gera(0, 'def putstr(x): print(x, end="")\n')
+            self.semantico.gera(0, 'def putchar(x): print(chr(x) if isinstance(x, int) else x, end="")\n')
+            self.semantico.gera(0, 'def getint(): return int(input())\n')
+            self.semantico.gera(0, 'def getfloat(): return float(input())\n')
+            self.semantico.gera(0, 'def getchar(): return input()[0]\n\n')
+
+            self.semantico.gera(0, 'class Programa:\n')
+            self.semantico.gera(1, 'def __init__(self):\n')
+            self.semantico.gera(2, 'pass\n\n')
+
             self.Program()
             self.consome(Token.eof)
             print("Traduzido com sucesso!")
@@ -52,7 +64,9 @@ class Sintatico:
             self.Function()
             self.Program()
         elif self.token_lido[0] == Token.eof:
-            pass
+            self.semantico.gera(0, '\nif __name__ == \'__main__\':\n')
+            self.semantico.gera(1, 'programa = Programa()\n')
+            self.semantico.gera(1, 'programa.main()\n')
         else:
             print(f"Erro Sintático: Início de programa inesperado com o token '{self.token_lido[1]}' na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
@@ -78,10 +92,18 @@ class Sintatico:
         self.ArgList(simbolo_funcao.params)
 
         self.consome(Token.fecha_parentese)
-        self.CompoundStmt()
+
+        if simbolo_funcao.params:
+            parametros = ', '.join([param['nome'] for param in simbolo_funcao.params])
+            self.semantico.gera(1, f'def {nome_funcao}(self, {parametros}):\n')
+        else:
+            self.semantico.gera(1, f'def {nome_funcao}(self):\n')
+
+        self.CompoundStmt(2)
 
         # Sai do escopo
         self.semantico.sair_escopo()
+        self.semantico.gera(0, '\n')
 
     # ArgList -> Arg RestoArgList | LAMBDA
     def ArgList (self, lista_parametros):
@@ -134,20 +156,20 @@ class Sintatico:
             raise Exception
 
     # CompoundStmt -> { StmtList }
-    def CompoundStmt(self):
+    def CompoundStmt(self, indentacao = 1):
         self.consome(Token.abre_chave)
 
         # Entrando em um novo escopo
         self.semantico.entrar_escopo()
 
-        self.StmtList()
+        self.StmtList(indentacao)
         self.consome(Token.fecha_chave)
 
         # Saindo do escopo
         self.semantico.sair_escopo()
 
     # StmtList -> Stmt StmtList | LAMBDA
-    def StmtList(self):
+    def StmtList(self, indentacao = 1):
         # Conjunto First para a variável StmtList
         comandos_possiveis = [
             Token.for_token, Token.while_token, Token.if_token, Token.abre_chave,
@@ -158,15 +180,15 @@ class Sintatico:
         ]
 
         if self.token_lido[0] in comandos_possiveis:
-            self.Stmt()
-            self.StmtList()
+            self.Stmt(indentacao)
+            self.StmtList(indentacao)
         elif self.token_lido[0] == Token.fecha_chave:
             pass
         else:
             print(f"Erro Sintático: Declaração ou expressão inválida na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
-    def Stmt (self):
+    def Stmt (self, indentacao = 1):
         # Conjunto First da variável Stmt
         comandos_possiveis = {
             Token.identificador, Token.valor_int, Token.valor_float,
@@ -179,66 +201,87 @@ class Sintatico:
 
         if tipo_token == Token.for_token:
             self.semantico.entrar_laco()
-            self.ForStmt()
+            self.ForStmt(indentacao)
             self.semantico.sair_laco()
 
         elif tipo_token == Token.while_token:
             self.semantico.entrar_laco()
-            self.WhileStmt()
+            self.WhileStmt(indentacao)
             self.semantico.sair_laco()
 
         elif tipo_token == Token.if_token:
-            self.IfStmt()
+            self.IfStmt(indentacao)
 
         elif tipo_token == Token.abre_chave:
-            self.CompoundStmt()
+            self.CompoundStmt(indentacao)
 
         elif tipo_token in {Token.int_token, Token.float_token, Token.char_token}:
-            self.Declaration()
+            self.Declaration(indentacao)
 
         elif tipo_token == Token.break_token:
             self.semantico.verificar_parada_laco(token)
             self.consome(Token.break_token)
             self.consome(Token.ponto_virgula)
+            self.semantico.gera(indentacao, 'break\n')
 
         elif tipo_token == Token.continue_token:
             self.semantico.verificar_parada_laco(token)
             self.consome(Token.continue_token)
             self.consome(Token.ponto_virgula)
+            self.semantico.gera(indentacao, 'continue\n')
 
         elif tipo_token == Token.return_token:
             self.consome(Token.return_token)
 
             # Pegando o retorno da expressão
-            tipo_expressao, _, _ = self.Expr()
+            tipo_expressao, codigo_expressao, _ = self.Expr()
 
             # Verificando o tipo de retorno
             self.semantico.verificar_retorno(tipo_expressao, token)
 
             self.consome(Token.ponto_virgula)
 
+            if codigo_expressao:
+                self.semantico.gera(indentacao, f'return {codigo_expressao}\n')
+            else:
+                self.semantico.gera(indentacao, 'return\n')
+
         elif tipo_token in comandos_possiveis:
-            self.Expr() # Não precisamos do retorno desta função aqui
+            tipo, codigo, _ = self.Expr()
             self.consome(Token.ponto_virgula)
+            self.semantico.gera(indentacao, f'{codigo}\n')
 
         elif tipo_token == Token.ponto_virgula:
             self.consome(Token.ponto_virgula) # Comando vazio
+            self.semantico.gera(indentacao, 'pass\n')
 
         else:
             print(f"Erro Sintático: Comando inválido '{self.token_lido[1]}' na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
     # ForStmt -> for ( Expr ; OptExpr ; OptExpr ) Stmt
-    def ForStmt (self):
+    def ForStmt (self, indentacao = 1):
         self.consome(Token.for_token)
         self.consome(Token.abre_parentese)
-        self.Expr()
+        tipo_init, codigo_init, _ = self.Expr()
         self.consome(Token.ponto_virgula)
-        self.OptExpr()
+        self.semantico.gera(indentacao, f'{codigo_init}\n')
+
+        tipo_cond, codigo_cond, _ = self.OptExpr()
         self.consome(Token.ponto_virgula)
-        self.OptExpr()
+
+        tipo_incr, codigo_incr, _ = self.OptExpr()
         self.consome(Token.fecha_parentese)
-        self.Stmt()
+
+        if codigo_cond:
+            self.semantico.gera(indentacao, f'while {codigo_cond}:\n')
+        else:
+            self.semantico.gera(indentacao, 'while True:\n')
+
+        self.Stmt(indentacao + 1)
+
+        if codigo_incr:
+            self.semantico.gera(indentacao + 1, f'{codigo_incr}\n')
 
     # OptExpr -> Expr | LAMBDA
     def OptExpr (self):
@@ -250,35 +293,42 @@ class Sintatico:
         }
 
         if self.token_lido[0] in comandos_possiveis:
-            self.Expr()
+            return self.Expr() # Retorna a tupla da expressão
         elif self.token_lido[0] in [Token.ponto_virgula, Token.fecha_parentese]:
-            pass
+            return None, '', 'vazio' # Retorna uma tupla vazia
         else:
             print(f"Erro Sintático: Expressão opcional mal formada em 'for' na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
     # WhileStmt -> while ( Expr ) Stmt
-    def WhileStmt (self):
+    def WhileStmt (self, indentacao = 1):
         self.consome(Token.while_token)
         self.consome(Token.abre_parentese)
-        self.Expr()
+        tipo, codigo, _ = self.Expr()
+
         self.consome(Token.fecha_parentese)
-        self.Stmt()
+        self.semantico.gera(indentacao, f'while {codigo}:\n')
+
+        self.Stmt(indentacao + 1)
 
     # IfStmt -> if ( Expr ) Stmt ElsePart
-    def IfStmt (self):
+    def IfStmt (self, indentacao = 1):
         self.consome(Token.if_token)
         self.consome(Token.abre_parentese)
-        self.Expr()
+        tipo, codigo, _ = self.Expr()
+
         self.consome(Token.fecha_parentese)
-        self.Stmt()
-        self.ElsePart()
+        self.semantico.gera(indentacao, f'if {codigo}:\n')
+
+        self.Stmt(indentacao + 1)
+        self.ElsePart(indentacao)
 
     # ElsePart -> else Stmt | LAMBDA
-    def ElsePart (self):
+    def ElsePart (self, indentacao = 1):
         if self.token_lido[0] == Token.else_token:
             self.consome(Token.else_token)
-            self.Stmt()
+            self.semantico.gera(indentacao, 'else:\n')
+            self.Stmt(indentacao + 1)
         elif self.token_lido[0] in [
             Token.for_token, Token.while_token, Token.if_token, Token.abre_chave,
             Token.break_token, Token.continue_token, Token.return_token,
@@ -293,9 +343,9 @@ class Sintatico:
             raise Exception
 
     # Declaration -> Type IdentList ;
-    def Declaration (self):
+    def Declaration (self, indentacao = 1):
         tipo_variavel = self.Type() # Pegando o tipo da variável atual
-        self.IdentList(tipo_variavel) # Passando o tipo da lista de variveis
+        self.IdentList(tipo_variavel, indentacao) # Passando o tipo da lista de variveis
         self.consome(Token.ponto_virgula)
 
     # Type -> int | float | char
@@ -309,16 +359,16 @@ class Sintatico:
             raise Exception
 
     # IdentList -> IdentDeclar RestoIdentList
-    def IdentList (self, tipo_variavel):
-        self.IdentDeclar(tipo_variavel)
-        self.RestoIdentList(tipo_variavel)
+    def IdentList (self, tipo_variavel, indentacao = 1):
+        self.IdentDeclar(tipo_variavel, indentacao)
+        self.RestoIdentList(tipo_variavel, indentacao)
 
     # RestoIdentList -> , IdentDeclar RestoIdentList | LAMBDA
-    def RestoIdentList (self, tipo_variavel):
+    def RestoIdentList (self, tipo_variavel, indentacao = 1):
         if self.token_lido[0] == Token.virgula:
             self.consome(Token.virgula)
-            self.IdentDeclar(tipo_variavel)
-            self.RestoIdentList(tipo_variavel)
+            self.IdentDeclar(tipo_variavel, indentacao)
+            self.RestoIdentList(tipo_variavel, indentacao)
         elif self.token_lido[0] == Token.ponto_virgula:
             pass
         else:
@@ -326,13 +376,22 @@ class Sintatico:
             raise Exception
 
     # IdentDeclar -> ident OpcIdentDeclar
-    def IdentDeclar (self, tipo_variavel):
+    def IdentDeclar (self, tipo_variavel, indentacao = 1):
         nome_variavel = self.token_lido[1]
         token = self.token_lido
         self.consome(Token.identificador)
         array, tamanho = self.OpcIdentDeclar() # Pegando se a variável é array e seu tamanho
 
         self.semantico.declarar_variavel(nome=nome_variavel, tipo=tipo_variavel, array=array, token=token)
+
+        if array:
+            self.semantico.gera(indentacao, f'{nome_variavel} = []\n')
+        elif tipo_variavel == Token.int_token:
+            self.semantico.gera(indentacao, f'{nome_variavel} = 0\n')
+        elif tipo_variavel == Token.float_token:
+            self.semantico.gera(indentacao, f'{nome_variavel} = 0.0\n')
+        elif tipo_variavel == Token.char_token:
+            self.semantico.gera(indentacao, f'{nome_variavel} = \'\'\n')
 
     # OpcIdentDeclar -> [ valorInt ] | LAMBDA
     def OpcIdentDeclar (self):
@@ -539,11 +598,6 @@ class Sintatico:
             print(f"Erro Sintático: Expressão esperava um identificador, número ou '(' na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
-    # Identifier -> ident OpcIdentifier
-    # def Identifier (self):
-    #     self.consome(Token.identificador)
-    #     self.OpcIdentifier()
-
     # OpcIdentifier -> [ Expr ] | ( Params ) | LAMBDA
     def OpcIdentifier (self, simbolo: Simbolo):
         token_info = self.token_lido
@@ -581,8 +635,14 @@ class Sintatico:
             self.semantico.validar_chamada_funcao(simbolo, tipos_args, token_info)
             self.consome(Token.fecha_parentese)
 
+            funcoes_padrao = {'putint', 'putfloat', 'putstr', 'putchar', 'getint', 'getfloat', 'getchar'}
+
+            prefixo = ''
+            if simbolo.nome not in funcoes_padrao:
+                prefixo = 'self.'
+
             tipo_retorno = (simbolo.tipo, False)
-            codigo_chamada = f"{simbolo.nome}({', '.join(codigos_args)})"
+            codigo_chamada = f"{prefixo}{simbolo.nome}({', '.join(codigos_args)})"
             categoria = 'expressao'
 
             return tipo_retorno, codigo_chamada, categoria

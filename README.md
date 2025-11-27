@@ -87,7 +87,7 @@ Garante que o código faz sentido lógico (ex: não somar um número com uma str
 1.  Clone o repositório:
     ```bash
     git clone https://github.com/gustavopvilela/mini-c.git
-    cd mini-c-semantico
+    cd mini-c
     ```
 
 2.  Execute o arquivo principal:

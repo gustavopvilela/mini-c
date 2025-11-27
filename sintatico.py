@@ -590,11 +590,11 @@ class Sintatico:
 
         elif token == Token.valor_char:
             self.consome(Token.valor_char)
-            return (Token.char_token, False), lexema, 'literal'
+            return (Token.char_token, False), f"\'{lexema}\'", 'literal'
 
         elif token == Token.valor_string:
             self.consome(Token.valor_string)
-            return (Token.char_token, True), lexema, 'literal'
+            return (Token.char_token, True), f"\"{lexema}\"", 'literal'
 
         else:
             print(f"Erro Sintático: Expressão esperava um identificador, número ou '(' na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")

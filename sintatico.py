@@ -12,10 +12,10 @@ class Sintatico:
     def traduz(self):
         self.token_lido = self.lexico.get_token()
         try:
-            self.semantico.gera(0, 'def putint(x): print(x, end="")\n')
-            self.semantico.gera(0, 'def putfloat(x): print(float(x), end="")\n')
-            self.semantico.gera(0, 'def putstr(x): print(x, end="")\n')
-            self.semantico.gera(0, 'def putchar(x): print(chr(x) if isinstance(x, int) else x, end="")\n')
+            self.semantico.gera(0, 'def putint(x): print(x, end="", flush=True)\n')
+            self.semantico.gera(0, 'def putfloat(x): print(float(x), end="", flush=True)\n')
+            self.semantico.gera(0, 'def putstr(x): print(x, end="", flush=True)\n')
+            self.semantico.gera(0, 'def putchar(x): print(chr(x) if isinstance(x, int) else x, end="", flush=True)\n')
             self.semantico.gera(0, 'def getint(): return int(input())\n')
             self.semantico.gera(0, 'def getfloat(): return float(input())\n')
             self.semantico.gera(0, 'def getchar(): return input()[0]\n\n')
@@ -27,8 +27,10 @@ class Sintatico:
             self.Program()
             self.consome(Token.eof)
             print("Traduzido com sucesso!")
+            return True
         except Exception as e:
             print(f"Ocorreu um erro durante a tradução. {e}")
+            return False
 
     def consome(self, token_atual):
         (token, lexema, linha, coluna) = self.token_lido
@@ -574,7 +576,7 @@ class Sintatico:
             return tipo, f"({codigo})", 'expressao'
 
         elif token == Token.identificador:
-            simbolo = self.semantico.verificar_identificador_declarado(lexema, token)
+            simbolo = self.semantico.verificar_identificador_declarado(lexema, token_info)
             self.consome(Token.identificador)
             return self.OpcIdentifier(simbolo)
 

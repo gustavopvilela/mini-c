@@ -64,7 +64,7 @@ Garante que o código faz sentido lógico (ex: não somar um número com uma str
 ## Estrutura de arquivos
 
 ```bash
-📦 mini-c-compiler
+📦 mini-c
  ┣ 📜 main.py              # Ponto de entrada (GUI para seleção de arquivo)
  ┣ 📜 lexico.py            # Analisador Léxico
  ┣ 📜 sintatico.py         # Analisador Sintático
@@ -86,7 +86,7 @@ Garante que o código faz sentido lógico (ex: não somar um número com uma str
 
 1.  Clone o repositório:
     ```bash
-    git clone [https://github.com/seu-usuario/mini-c-semantico.git](https://github.com/seu-usuario/mini-c-semantico.git)
+    git clone https://github.com/gustavopvilela/mini-c.git
     cd mini-c-semantico
     ```
 

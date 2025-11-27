@@ -23,11 +23,17 @@ from simbolo import Simbolo
 from ttoken import Token
 
 class Semantico:
-    def __init__(self):
+    def __init__(self, alvo):
         self.tabela_simbolos = TabelaSimbolos()
         self.retorno_funcao_atual = None
         self.nivel_laco = 0
         self.declarar_funcoes_padrao()
+        self.alvo = alvo
+
+        self.alvo = open(alvo, "wt")
+
+    def finaliza (self):
+        self.alvo.close()
 
     def declarar_funcoes_padrao (self):
         putint = Simbolo(nome='putint', categoria='funcao', tipo=Token.int_token)
@@ -93,7 +99,7 @@ class Semantico:
         if self.retorno_funcao_atual is None:
             raise Exception(f'Erro semântico na linha {token[2]}: comando \'return\' encontrado fora de uma função')
 
-        tipo_esperado = (self.retorno_funcao_atual.tipo, False)
+        tipo_esperado = (self.retorno_funcao_atual, False)
         if not checar_atribuicao(tipo_esperado, tipo):
             raise Exception(f'Erro semântico na linha {token[2]}: tipo de retorno incompatível. Esperava \'{Token.msg(self.retorno_funcao_atual)}\' mas recebey {tipo}.')
 
@@ -139,3 +145,8 @@ class Semantico:
     def validar_atribuicao (self, tipo_variavel, tipo_expressao, token):
         if not checar_atribuicao(tipo_variavel, tipo_expressao):
             raise Exception(f'Erro semântico na linha {token[2]}: atribuição incompatível. Impossível atribuir {tipo_expressao} a {tipo_variavel}.')
+
+    def gera (self, nivel, codigo):
+        identacao = ' ' * 4 * nivel
+        linha = identacao + codigo
+        self.alvo.write(linha)

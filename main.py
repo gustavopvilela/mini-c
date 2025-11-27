@@ -5,7 +5,7 @@ from ttoken import Token
 
 if __name__ == '__main__':
     try:
-        with open("testes/testebolha.txt", 'r', encoding='utf-8') as arquivo:
+        with open("testes/mini_c_teste.txt", 'r', encoding='utf-8') as arquivo:
             lexico = Lexico(arquivo)
             sintatico = Sintatico(lexico)
             sintatico.traduz()

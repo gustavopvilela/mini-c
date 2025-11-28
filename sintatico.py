@@ -8,14 +8,33 @@ class Sintatico:
         self.lexico = lexico
         self.token_lido = None
         self.semantico = Semantico(alvo)
+        self.main = False
 
     def traduz(self):
         self.token_lido = self.lexico.get_token()
         try:
-            self.semantico.gera(0, 'def putint(x): print(x, end="", flush=True)\n')
+            self.semantico.gera(0, 'def putint(x): print(int(x), end="", flush=True)\n')
             self.semantico.gera(0, 'def putfloat(x): print(float(x), end="", flush=True)\n')
-            self.semantico.gera(0, 'def putstr(x): print(x, end="", flush=True)\n')
-            self.semantico.gera(0, 'def putchar(x): print(chr(x) if isinstance(x, int) else x, end="", flush=True)\n')
+            #self.semantico.gera(0, 'def putstr(x): print(x, end="", flush=True)\n')
+
+            self.semantico.gera(0, 'def putstr(x):\n')
+            self.semantico.gera(1, 'if isinstance(x, list):\n')
+            self.semantico.gera(2, 'texto = ""\n')
+            self.semantico.gera(2, 'for c in x:\n')
+            self.semantico.gera(3, 'if str(c) == "\\0" or str(c) == "\\x00": break\n')
+            self.semantico.gera(3, 'texto += str(c)\n')
+            self.semantico.gera(2, 'print(texto, end="", flush=True)\n')
+            self.semantico.gera(1, 'else:\n')
+            self.semantico.gera(2, 'print(x, end="", flush=True)\n\n')
+
+            # self.semantico.gera(0, 'def putchar(x): print(chr(int(x)), end="", flush=True)\n')
+
+            self.semantico.gera(0, 'def putchar(x):\n')
+            self.semantico.gera(1, 'if isinstance(x, (int, float)):\n')
+            self.semantico.gera(2, 'print(chr(int(x)), end="", flush=True)\n')
+            self.semantico.gera(1, 'else:\n')
+            self.semantico.gera(2, 'print(str(x)[0], end="", flush=True)\n\n')
+
             self.semantico.gera(0, 'def getint(): return int(input())\n')
             self.semantico.gera(0, 'def getfloat(): return float(input())\n')
             self.semantico.gera(0, 'def getchar(): return input()[0]\n\n')
@@ -29,7 +48,7 @@ class Sintatico:
             print("Traduzido com sucesso!")
             return True
         except Exception as e:
-            print(f"Ocorreu um erro durante a tradução. {e}")
+            print(f"Ocorreu um erro durante a tradução.\n{e}")
             return False
 
     def consome(self, token_atual):
@@ -66,9 +85,12 @@ class Sintatico:
             self.Function()
             self.Program()
         elif self.token_lido[0] == Token.eof:
-            self.semantico.gera(0, '\nif __name__ == \'__main__\':\n')
-            self.semantico.gera(1, 'programa = Programa()\n')
-            self.semantico.gera(1, 'programa.main()\n')
+            if self.main:
+                self.semantico.gera(0, '\nif __name__ == \'__main__\':\n')
+                self.semantico.gera(1, 'programa = Programa()\n')
+                self.semantico.gera(1, 'programa.main()\n')
+            else:
+                print("[AVISO]: Arquivo sem main. O código não será executado diretamente.")
         else:
             print(f"Erro Sintático: Início de programa inesperado com o token '{self.token_lido[1]}' na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
@@ -79,6 +101,8 @@ class Sintatico:
         tipo_retorno = self.Type()
         nome_funcao = self.token_lido[1]
         token_funcao = self.token_lido
+
+        if nome_funcao == 'main': self.main = True
 
         self.consome(Token.identificador)
 
@@ -102,6 +126,9 @@ class Sintatico:
             self.semantico.gera(1, f'def {nome_funcao}(self):\n')
 
         self.CompoundStmt(2)
+
+        # Verificando se a função tem mesmo um retorno
+        self.semantico.verificar_fluxo_retorno(token_funcao)
 
         # Sai do escopo
         self.semantico.sair_escopo()
@@ -163,6 +190,9 @@ class Sintatico:
 
         # Entrando em um novo escopo
         self.semantico.entrar_escopo()
+
+        if self.token_lido[0] == Token.fecha_chave:
+            self.semantico.gera(indentacao, 'pass\n')
 
         self.StmtList(indentacao)
         self.consome(Token.fecha_chave)
@@ -384,10 +414,22 @@ class Sintatico:
         self.consome(Token.identificador)
         array, tamanho = self.OpcIdentDeclar() # Pegando se a variável é array e seu tamanho
 
-        self.semantico.declarar_variavel(nome=nome_variavel, tipo=tipo_variavel, array=array, token=token)
+        self.semantico.declarar_variavel(
+            nome=nome_variavel,
+            tipo=tipo_variavel,
+            array=array,
+            token=token,
+            tamanho=tamanho
+        )
 
         if array:
-            self.semantico.gera(indentacao, f'{nome_variavel} = []\n')
+            valor_padrao = '0'
+            if tipo_variavel == Token.float_token:
+                valor_padrao = '0.0'
+            elif tipo_variavel == Token.char_token:
+                valor_padrao = "'\\0'"
+
+            self.semantico.gera(indentacao, f'{nome_variavel} = [{valor_padrao}] * {tamanho}\n')
         elif tipo_variavel == Token.int_token:
             self.semantico.gera(indentacao, f'{nome_variavel} = 0\n')
         elif tipo_variavel == Token.float_token:
@@ -611,11 +653,20 @@ class Sintatico:
                 raise Exception(f"Erro semântico nalinha {token_info[2]}: {simbolo.nome} não é vetor e não pode ser indexado.")
 
             self.consome(Token.abre_colchete)
-            tipo_indice, codigo_indice, _ = self.Expr()
+            tipo_indice, codigo_indice, categoria_indice = self.Expr()
 
             if tipo_indice != (Token.int_token, False):
                 raise Exception(
-                    f"Erro semântico nalinha {token_info[2]}: índice do vetor deve ser inteiro.")
+                    f"Erro semântico na linha {token_info[2]}: índice do vetor deve ser inteiro.")
+
+            if categoria_indice == 'literal' and simbolo.tamanho is not None:
+                indice_val = int(codigo_indice)
+                tamanho_max = int(simbolo.tamanho)
+
+                if indice_val < 0 or indice_val >= tamanho_max:
+                    raise Exception(
+                        f"Erro semântico na linha {token_info[2]}: acesso fora dos limites do vetor '{simbolo.nome}'."
+                    )
 
             self.consome(Token.fecha_colchete)
 

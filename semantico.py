@@ -26,6 +26,7 @@ class Semantico:
     def __init__(self, alvo):
         self.tabela_simbolos = TabelaSimbolos()
         self.retorno_funcao_atual = None
+        self.encontrou_retorno = False
         self.nivel_laco = 0
         self.declarar_funcoes_padrao()
         self.alvo = alvo
@@ -74,6 +75,7 @@ class Semantico:
             raise Exception(f'Erro semântico ao declarar função na linha {token[2]}: {erro}')
 
         self.retorno_funcao_atual = retorno
+        self.encontrou_retorno = False
         return simbolo
 
     def declarar_argumento (self, nome, tipo, array, lista_parametros, token):
@@ -83,8 +85,8 @@ class Semantico:
         if not sucesso:
             raise Exception(f'Erro semântico ao declarar argumento na linha {token[2]}: {erro}')
 
-    def declarar_variavel (self, nome, tipo, array, token):
-        simbolo = Simbolo(nome=nome, categoria='variavel', tipo=tipo, array=array)
+    def declarar_variavel (self, nome, tipo, array, token, tamanho=None):
+        simbolo = Simbolo(nome=nome, categoria='variavel', tipo=tipo, array=array, tamanho=tamanho)
         sucesso, erro = self.tabela_simbolos.adicionar_simbolo(simbolo)
         if not sucesso:
             raise Exception(f'Erro semântico ao declarar variável na linha {token[2]}: {erro}')
@@ -102,6 +104,12 @@ class Semantico:
         tipo_esperado = (self.retorno_funcao_atual, False)
         if not checar_atribuicao(tipo_esperado, tipo):
             raise Exception(f'Erro semântico na linha {token[2]}: tipo de retorno incompatível. Esperava \'{Token.msg(self.retorno_funcao_atual)}\' mas recebey {tipo}.')
+
+        self.encontrou_retorno = True
+
+    def verificar_fluxo_retorno (self, token):
+        if not self.encontrou_retorno:
+            raise Exception(f'Erro semântico na linha {token[2]}: a função \'{token[1]}\' deve retonar um valor, mas nenhum \'return\' foi encontrado.')
 
     def entrar_laco (self):
         self.nivel_laco += 1

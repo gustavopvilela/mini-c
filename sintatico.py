@@ -6,17 +6,32 @@ from semantico import Semantico
 class Sintatico:
     def __init__(self, lexico: Lexico, alvo: str = "saida.py"):
         self.lexico = lexico
-        self.token_lido = None
-        self.semantico = Semantico(alvo)
-        self.main = False
+        self.token_lido = None # Armazena o token atual que está sendo analisado
+        self.semantico = Semantico(alvo) # Instancia o gerador de código
+        self.main = False # Flag para saber se o programa possui uma função main()
 
+    """
+    Método principal que inicia a tradução.
+    Além de começar a análise, ele escreve o cabeçalho do arquivo Python,
+    definindo as funções do Mini-C (putint, getint, etc.) em Python puro.
+    """
     def traduz(self):
-        self.token_lido = self.lexico.get_token()
+        self.token_lido = self.lexico.get_token() # Lê o primeiro token
         try:
-            self.semantico.gera(0, 'def putint(x): print(int(x), end="", flush=True)\n')
-            self.semantico.gera(0, 'def putfloat(x): print(float(x), end="", flush=True)\n')
-            #self.semantico.gera(0, 'def putstr(x): print(x, end="", flush=True)\n')
+            # Geração das bibliotecas padrão no arquivo final
+            # Aqui, estamos escrevendo código Python diretamente no arquivo de saída
+            # para que as funções do C funcionem em Python
+            self.semantico.gera(0, 'def putint(x):\n')
+            self.semantico.gera(1, 'if isinstance(x, str):\n')
+            self.semantico.gera(2, 'x = ord(x)\n')
+            self.semantico.gera(1, 'print(int(x), end="", flush=True)\n\n')
 
+            self.semantico.gera(0, 'def putfloat(x):\n')
+            self.semantico.gera(1, 'if isinstance(x, str):\n')
+            self.semantico.gera(2, 'x = ord(x)\n')
+            self.semantico.gera(1, 'print(float(x), end="", flush=True)\n\n')
+
+            # putstr: imprime strings ou arrays de char
             self.semantico.gera(0, 'def putstr(x):\n')
             self.semantico.gera(1, 'if isinstance(x, list):\n')
             self.semantico.gera(2, 'texto = ""\n')
@@ -26,8 +41,6 @@ class Sintatico:
             self.semantico.gera(2, 'print(texto, end="", flush=True)\n')
             self.semantico.gera(1, 'else:\n')
             self.semantico.gera(2, 'print(x, end="", flush=True)\n\n')
-
-            # self.semantico.gera(0, 'def putchar(x): print(chr(int(x)), end="", flush=True)\n')
 
             self.semantico.gera(0, 'def putchar(x):\n')
             self.semantico.gera(1, 'if isinstance(x, (int, float)):\n')
@@ -43,19 +56,25 @@ class Sintatico:
             self.semantico.gera(1, 'def __init__(self):\n')
             self.semantico.gera(2, 'pass\n\n')
 
-            self.Program()
-            self.consome(Token.eof)
+            # Início da análise sintática
+            self.Program() # Regra inicial da gramática
+            self.consome(Token.eof) # Verifica se o arquivo terminou corretamente
             print("Traduzido com sucesso!")
             return True
         except Exception as e:
             print(f"Ocorreu um erro durante a tradução.\n{e}")
             return False
 
+    """
+    Função fundamental do parser. Verifica se o token atual é o esperado.
+    Se for, avança para o próximo token. Se não, gera erro.
+    """
     def consome(self, token_atual):
         (token, lexema, linha, coluna) = self.token_lido
         if token_atual == token:
-            self.token_lido = self.lexico.get_token()
+            self.token_lido = self.lexico.get_token() # Avança para o próximo token
         else:
+            # Gera o erro
             msg_token_lido = Token.msg(token)
             msg_token_atual = Token.msg(token_atual)
 
@@ -81,10 +100,13 @@ class Sintatico:
 
     # Program -> Function Program | LAMBDA
     def Program (self):
+        # Um programa é uma lista de funções.
+        # Se começar com int, float ou char é uma declaração de funcão.
         if self.token_lido[0] in [Token.int_token, Token.float_token, Token.char_token]:
             self.Function()
-            self.Program()
+            self.Program() # Recursão para ler a próxima função
         elif self.token_lido[0] == Token.eof:
+            # Fim do arquivo: gera o código que executa a main() no Python
             if self.main:
                 self.semantico.gera(0, '\nif __name__ == \'__main__\':\n')
                 self.semantico.gera(1, 'programa = Programa()\n')
@@ -97,7 +119,7 @@ class Sintatico:
 
     # Function -> Type ident ( ArgList ) CompoundStmt
     def Function (self):
-        # Capturando o tipo de retorno
+        # Analisa uma função completa: tipo, nome, parâmetros e corpo
         tipo_retorno = self.Type()
         nome_funcao = self.token_lido[1]
         token_funcao = self.token_lido
@@ -106,7 +128,7 @@ class Sintatico:
 
         self.consome(Token.identificador)
 
-        # Declarando a função no semântico
+        # Avisa o semântico que uma função foi declarada (para a tabela de símbolos)
         simbolo_funcao = self.semantico.declarar_funcao(nome=nome_funcao, retorno=tipo_retorno, token=token_funcao)
 
         self.consome(Token.abre_parentese)
@@ -119,13 +141,15 @@ class Sintatico:
 
         self.consome(Token.fecha_parentese)
 
+        # Gera o código "def nome_funcao(self, x, y):" em Python
         if simbolo_funcao.params:
             parametros = ', '.join([param['nome'] for param in simbolo_funcao.params])
             self.semantico.gera(1, f'def {nome_funcao}(self, {parametros}):\n')
         else:
             self.semantico.gera(1, f'def {nome_funcao}(self):\n')
 
-        self.CompoundStmt(2)
+        # Analisa o corpo da função { ... }
+        self.CompoundStmt(2) # A identação é 2 pois está dentro da classe e do def
 
         # Verificando se a função tem mesmo um retorno
         self.semantico.verificar_fluxo_retorno(token_funcao)
@@ -136,11 +160,12 @@ class Sintatico:
 
     # ArgList -> Arg RestoArgList | LAMBDA
     def ArgList (self, lista_parametros):
+        # Lista de argumentos separada por vírgula
         if self.token_lido[0] in [Token.int_token, Token.float_token, Token.char_token]:
             self.Arg(lista_parametros)
             self.RestoArgList(lista_parametros)
         elif self.token_lido[0] == Token.fecha_parentese:
-            pass
+            pass # Lista vazia
         else:
             print(f"Erro Sintático: Lista de argumentos inválida na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
@@ -186,11 +211,13 @@ class Sintatico:
 
     # CompoundStmt -> { StmtList }
     def CompoundStmt(self, indentacao = 1):
+        # Bloco de código entre chaves { }
         self.consome(Token.abre_chave)
 
         # Entrando em um novo escopo
         self.semantico.entrar_escopo()
 
+        # Python exige "pass" se o bloco de código for vazio
         if self.token_lido[0] == Token.fecha_chave:
             self.semantico.gera(indentacao, 'pass\n')
 
@@ -220,6 +247,7 @@ class Sintatico:
             print(f"Erro Sintático: Declaração ou expressão inválida na linha {self.token_lido[2]}, coluna {self.token_lido[3]}")
             raise Exception
 
+    # Stmt -> Diversos tipos de comandos (if, while, for, return, atribuição, ...)
     def Stmt (self, indentacao = 1):
         # Conjunto First da variável Stmt
         comandos_possiveis = {
@@ -293,25 +321,37 @@ class Sintatico:
 
     # ForStmt -> for ( Expr ; OptExpr ; OptExpr ) Stmt
     def ForStmt (self, indentacao = 1):
+        # A tradução de um for do C para Python é complexa, dessa forma,
+        # optou-se por transformar em um while com a inicialização,
+        # condição de parada e incremento do C.
+
         self.consome(Token.for_token)
         self.consome(Token.abre_parentese)
+
+        # Inicialização
         tipo_init, codigo_init, _ = self.Expr()
         self.consome(Token.ponto_virgula)
         self.semantico.gera(indentacao, f'{codigo_init}\n')
 
+        # Condição de parada
         tipo_cond, codigo_cond, _ = self.OptExpr()
         self.consome(Token.ponto_virgula)
 
+        # Incremento
         tipo_incr, codigo_incr, _ = self.OptExpr()
         self.consome(Token.fecha_parentese)
 
+        # Como a condição é opcional no C (bem como o incremento),
+        # caso ela tenha sido declarada, coloca-se a condição no while,
+        # caso contrário, utiliza-se um while True
         if codigo_cond:
             self.semantico.gera(indentacao, f'while {codigo_cond}:\n')
         else:
             self.semantico.gera(indentacao, 'while True:\n')
 
-        self.Stmt(indentacao + 1)
+        self.Stmt(indentacao + 1)   # Corpo do loop
 
+        # Incremento do loop (ele é opcional também)
         if codigo_incr:
             self.semantico.gera(indentacao + 1, f'{codigo_incr}\n')
 
@@ -409,11 +449,13 @@ class Sintatico:
 
     # IdentDeclar -> ident OpcIdentDeclar
     def IdentDeclar (self, tipo_variavel, indentacao = 1):
+        # Declara uma variável e gera sua inicialização em Python
         nome_variavel = self.token_lido[1]
         token = self.token_lido
         self.consome(Token.identificador)
         array, tamanho = self.OpcIdentDeclar() # Pegando se a variável é array e seu tamanho
 
+        # Registra a variável na tabela de símbolos
         self.semantico.declarar_variavel(
             nome=nome_variavel,
             tipo=tipo_variavel,
@@ -422,6 +464,8 @@ class Sintatico:
             tamanho=tamanho
         )
 
+        # Gera a inicialização padrão (0 para int, 0.0 para float, etc),
+        # pois o Python precisa que a variável seja inicializada para existir
         if array:
             valor_padrao = '0'
             if tipo_variavel == Token.float_token:

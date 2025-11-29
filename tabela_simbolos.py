@@ -3,22 +3,27 @@ from simbolo import Simbolo
 
 class TabelaSimbolos:
     def __init__ (self):
+        # A pilha de escopos começa com o escopo global
         self.escopo = [{}]
 
     def entra_escopo (self):
+        # Adiciona um novo dicionário vazio na pilha de escopos
         self.escopo.append({})
 
     def sai_escopo (self):
+        # Remove o último escopo (nunca remove o global)
         if len(self.escopo) > 1: self.escopo.pop()
 
     def adicionar_simbolo (self, simbolo: Simbolo):
         escopo_atual = self.escopo[-1]
+        # Verifica colisão de nomes no escopo atual
         if simbolo.nome in escopo_atual:
             return False, f"Identificador '{simbolo.nome}' já declarado neste escopo."
         escopo_atual[simbolo.nome] = simbolo
         return True, ""
 
     def procurar_simbolo (self, nome):
+        # Busca do símbolo mais específico (topo) para o mais global (base)
         for escopo in reversed(self.escopo):
             if nome in escopo:
                 return escopo[nome]
@@ -105,6 +110,8 @@ def checar_operacao_unaria (operacao, tipo_elemento):
 
 def checar_atribuicao (tipo_variavel, tipo_expressao):
     if tipo_variavel == tipo_expressao: return True
+
+    # Não pode atribuir arrays diretamente (exceto string literal, tratada separadamente)
     if tipo_variavel[1]: return False
     if tipo_expressao[1]: return False
     if tipo_variavel == (Token.float_token, False) and tipo_expressao: return True

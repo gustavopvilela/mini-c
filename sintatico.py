@@ -210,7 +210,7 @@ class Sintatico:
             raise Exception
 
     # CompoundStmt -> { StmtList }
-    def CompoundStmt(self, indentacao = 1):
+    def CompoundStmt(self, indentacao = 1, loop_incr=None):
         # Bloco de código entre chaves { }
         self.consome(Token.abre_chave)
 
@@ -221,14 +221,14 @@ class Sintatico:
         if self.token_lido[0] == Token.fecha_chave:
             self.semantico.gera(indentacao, 'pass\n')
 
-        self.StmtList(indentacao)
+        self.StmtList(indentacao, loop_incr)
         self.consome(Token.fecha_chave)
 
         # Saindo do escopo
         self.semantico.sair_escopo()
 
     # StmtList -> Stmt StmtList | LAMBDA
-    def StmtList(self, indentacao = 1):
+    def StmtList(self, indentacao = 1, loop_incr=None):
         # Conjunto First para a variável StmtList
         comandos_possiveis = [
             Token.for_token, Token.while_token, Token.if_token, Token.abre_chave,
@@ -239,8 +239,8 @@ class Sintatico:
         ]
 
         if self.token_lido[0] in comandos_possiveis:
-            self.Stmt(indentacao)
-            self.StmtList(indentacao)
+            self.Stmt(indentacao, loop_incr)
+            self.StmtList(indentacao, loop_incr)
         elif self.token_lido[0] == Token.fecha_chave:
             pass
         else:
@@ -248,7 +248,7 @@ class Sintatico:
             raise Exception
 
     # Stmt -> Diversos tipos de comandos (if, while, for, return, atribuição, ...)
-    def Stmt (self, indentacao = 1):
+    def Stmt (self, indentacao = 1, loop_incr=None):
         # Conjunto First da variável Stmt
         comandos_possiveis = {
             Token.identificador, Token.valor_int, Token.valor_float,
@@ -270,10 +270,10 @@ class Sintatico:
             self.semantico.sair_laco()
 
         elif tipo_token == Token.if_token:
-            self.IfStmt(indentacao)
+            self.IfStmt(indentacao, loop_incr)
 
         elif tipo_token == Token.abre_chave:
-            self.CompoundStmt(indentacao)
+            self.CompoundStmt(indentacao, loop_incr)
 
         elif tipo_token in {Token.int_token, Token.float_token, Token.char_token}:
             self.Declaration(indentacao)
@@ -288,6 +288,12 @@ class Sintatico:
             self.semantico.verificar_parada_laco(token)
             self.consome(Token.continue_token)
             self.consome(Token.ponto_virgula)
+
+            # Para garantir que não haja loops infinitos ao traduzir
+            # for loops para Python, é necessário que o incremento
+            # nativo do C seja passando antes de comandos de continue
+            if loop_incr:
+                self.semantico.gera(indentacao, f'{loop_incr}\n')
             self.semantico.gera(indentacao, 'continue\n')
 
         elif tipo_token == Token.return_token:
@@ -349,7 +355,7 @@ class Sintatico:
         else:
             self.semantico.gera(indentacao, 'while True:\n')
 
-        self.Stmt(indentacao + 1)   # Corpo do loop
+        self.Stmt(indentacao + 1, loop_incr=codigo_incr)   # Corpo do loop
 
         # Incremento do loop (ele é opcional também)
         if codigo_incr:
@@ -384,7 +390,7 @@ class Sintatico:
         self.Stmt(indentacao + 1)
 
     # IfStmt -> if ( Expr ) Stmt ElsePart
-    def IfStmt (self, indentacao = 1):
+    def IfStmt (self, indentacao = 1, loop_incr=None):
         self.consome(Token.if_token)
         self.consome(Token.abre_parentese)
         tipo, codigo, _ = self.Expr()
@@ -392,15 +398,15 @@ class Sintatico:
         self.consome(Token.fecha_parentese)
         self.semantico.gera(indentacao, f'if {codigo}:\n')
 
-        self.Stmt(indentacao + 1)
-        self.ElsePart(indentacao)
+        self.Stmt(indentacao + 1, loop_incr)
+        self.ElsePart(indentacao, loop_incr)
 
     # ElsePart -> else Stmt | LAMBDA
-    def ElsePart (self, indentacao = 1):
+    def ElsePart (self, indentacao = 1, loop_incr=None):
         if self.token_lido[0] == Token.else_token:
             self.consome(Token.else_token)
             self.semantico.gera(indentacao, 'else:\n')
-            self.Stmt(indentacao + 1)
+            self.Stmt(indentacao + 1, loop_incr)
         elif self.token_lido[0] in [
             Token.for_token, Token.while_token, Token.if_token, Token.abre_chave,
             Token.break_token, Token.continue_token, Token.return_token,
@@ -540,7 +546,9 @@ class Sintatico:
             tipo_direito, codigo_direito, _ = self.Nao()
 
             tipo_resultado = self.semantico.validar_operacao_binaria(tipo_esquerdo, operador, tipo_direito, token)
-            novo_codigo = f"{codigo_esquerdo} {Token.msg(operador)} {codigo_direito}"
+
+            op_python = 'and' if operador == Token.and_token else 'or'
+            novo_codigo = f"{codigo_esquerdo} {op_python} {codigo_direito}"
 
             return self.RestoLog((tipo_resultado, novo_codigo, 'expressao'))
 
@@ -556,7 +564,8 @@ class Sintatico:
             tipo_operando, codigo_operando, _ = self.Nao()
 
             tipo_resultado = self.semantico.validar_operacao_unaria(operador, tipo_operando, token)
-            novo_codigo = f"!{codigo_operando}"
+
+            novo_codigo = f" not {codigo_operando}"
 
             return tipo_resultado, novo_codigo, 'expressao'
         else:

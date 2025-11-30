@@ -37,7 +37,7 @@ class Semantico:
         self.alvo = alvo
 
         # Abre o arquivo de saída no qual o código traduzido será escrito
-        self.alvo = open(alvo, "wt")
+        self.alvo = open(alvo, "wt", encoding='utf-8')
 
     def finaliza (self):
         self.alvo.close()
